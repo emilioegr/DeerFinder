@@ -3,7 +3,7 @@ import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from "react-leaf
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
-// Deer icon
+// 🦌 Deer icon
 const deerIcon = new L.Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/128/2267/2267459.png",
   iconSize: [45, 45],
@@ -14,6 +14,42 @@ const deerIcon = new L.Icon({
   shadowSize: [41, 41],
   shadowAnchor: [14, 41],
 });
+
+// 🔢 Cluster icon (number of sightings)
+function createClusterIcon(count: number) {
+  return new L.DivIcon({
+    html: `<div style="
+      background:#ff5722;
+      color:white;
+      font-weight:bold;
+      border-radius:50%;
+      width:40px;
+      height:40px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      border:2px solid white;
+      box-shadow:0 0 4px rgba(0,0,0,0.4);
+    ">${count}</div>`,
+    className: "",
+    iconSize: [40, 40],
+  });
+}
+
+// Haversine formula to calculate distance in meters
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371000; // meters
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(toRad(lat1)) *
+      Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 interface Sighting {
   _id?: string;
@@ -26,15 +62,7 @@ interface Sighting {
 export default function App() {
   const [markers, setMarkers] = useState<Sighting[]>([]);
 
-  // Fetch sightings from backend on load
-  useEffect(() => {
-    fetch("http://localhost:5050/api/sightings")
-      .then(res => res.json())
-      .then((data: Sighting[]) => setMarkers(data))
-      .catch(err => console.error("Failed to fetch sightings:", err));
-  }, []);
-
-   // Helper: check if a date is today
+  // ✅ Helper: check if a sighting is from today
   const isToday = (dateString?: string) => {
     if (!dateString) return false;
     const d = new Date(dateString);
@@ -46,19 +74,18 @@ export default function App() {
     );
   };
 
-    // Fetch sightings from backend on load
+  // ✅ Fetch sightings from backend
   useEffect(() => {
     fetch("http://localhost:5050/api/sightings")
-      .then(res => res.json())
+      .then((res) => res.json())
       .then((data: Sighting[]) => {
-        // Only keep today's sightings
-        const todaysSightings = data.filter(s => isToday(s.createdAt));
-        setMarkers(todaysSightings);
+        const todays = data.filter((s) => isToday(s.createdAt));
+        setMarkers(todays);
       })
-      .catch(err => console.error("Failed to fetch sightings:", err));
+      .catch((err) => console.error("Failed to fetch sightings:", err));
   }, []);
 
-
+  // ✅ Add new marker on map click
   function AddMarkerOnClick() {
     useMapEvents({
       click(e) {
@@ -71,31 +98,30 @@ export default function App() {
           description: desc,
         };
 
-        // Save to backend
         fetch("http://localhost:5050/api/sightings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(newSighting),
         })
-          .then(res => res.json())
+          .then((res) => res.json())
           .then((saved: Sighting) => {
-            // Only add if it’s today
             if (isToday(saved.createdAt)) {
-              setMarkers(prev => [...prev, saved]);
+              setMarkers((prev) => [...prev, saved]);
             }
           })
-          .catch(err => console.error("Failed to save sighting:", err));
+          .catch((err) => console.error("Failed to save sighting:", err));
       },
     });
     return null;
   }
 
+  // ✅ "Found a deer here!" button
   const handleLocateMe = () => {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported by your browser");
       return;
     }
-    navigator.geolocation.getCurrentPosition(position => {
+    navigator.geolocation.getCurrentPosition((position) => {
       const { latitude, longitude } = position.coords;
 
       const newSighting = {
@@ -109,18 +135,42 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newSighting),
       })
-        .then(res => res.json())
+        .then((res) => res.json())
         .then((saved: Sighting) => {
           if (isToday(saved.createdAt)) {
-            setMarkers(prev => [...prev, saved]);
+            setMarkers((prev) => [...prev, saved]);
           }
         })
-        .catch(err => console.error("Failed to save sighting:", err));
+        .catch((err) => console.error("Failed to save sighting:", err));
     });
   };
-  
+
+  // ✅ Group sightings within 10 meters
+  function groupSightings(sightings: Sighting[]) {
+    const groups: { lat: number; lng: number; items: Sighting[] }[] = [];
+
+    sightings.forEach((s) => {
+      let found = false;
+      for (const g of groups) {
+        if (getDistance(s.lat, s.lng, g.lat, g.lng) < 10) {
+          g.items.push(s);
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        groups.push({ lat: s.lat, lng: s.lng, items: [s] });
+      }
+    });
+
+    return groups;
+  }
+
+  const grouped = groupSightings(markers);
+
   return (
     <div style={{ height: "100%", width: "100%" }}>
+      {/* 📍 Locate button */}
       <button
         onClick={handleLocateMe}
         style={{
@@ -139,44 +189,81 @@ export default function App() {
       >
         Found a deer here!
       </button>
+
+      {/* Attribution */}
       <div
-    style={{
-      position: "absolute",
-      bottom: 0,
-      left: 0,
-      padding: "6px 10px",
-      fontSize: "12px",
-      backgroundColor: "rgba(255, 255, 255, 0.8)",
-      borderTopRightRadius: "6px",
-      zIndex: 1000,
-    }}
-  >
-    <a
-      href="https://www.flaticon.com/free-icons/deer"
-      title="deer icons"
-      style={{ color: "#333", textDecoration: "none" }}
-      target="_blank"
-      rel="noopener noreferrer"
-    >
-      Deer icons created by max.icons - Flaticon
-    </a>
-  </div>
+        style={{
+          position: "absolute",
+          bottom: 0,
+          left: 0,
+          padding: "6px 10px",
+          fontSize: "12px",
+          backgroundColor: "rgba(255, 255, 255, 0.8)",
+          borderTopRightRadius: "6px",
+          zIndex: 1000,
+        }}
+      >
+        <a
+          href="https://www.flaticon.com/free-icons/deer"
+          title="deer icons"
+          style={{ color: "#333", textDecoration: "none" }}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Deer icons created by max.icons - Flaticon
+        </a>
+      </div>
+
+      {/* 🗺 Map */}
       <MapContainer center={[53.356, -6.329]} zoom={15} style={{ height: "100%", width: "100%" }}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution="&copy; OpenStreetMap contributors"
         />
-        {markers.map((m, idx) => (
-          <Marker key={m._id || idx} position={[m.lat, m.lng]} icon={deerIcon}>
-            <Popup>
-              <div>
-                <strong>{m.description}</strong>
-                <br />
-                Last seen: {m.createdAt ? new Date(m.createdAt).toLocaleString() : "Unknown"}
-              </div>
-            </Popup>
-          </Marker>
-        ))}
+
+        {/* Render groups */}
+          {grouped.map((g, idx) =>
+            g.items.length === 1 ? (
+              <Marker
+                key={g.items[0]._id || idx}
+                position={[g.lat, g.lng]}
+                icon={deerIcon}
+              >
+                <Popup>
+                  <div>
+                    <strong>{g.items[0].description}</strong>
+                    <br />
+                    Last seen:{" "}
+                    {g.items[0].createdAt
+                      ? new Date(g.items[0].createdAt).toLocaleString()
+                      : "Unknown"}
+                  </div>
+                </Popup>
+              </Marker>
+            ) : (
+              <Marker
+                key={idx}
+                position={[g.lat, g.lng]}
+                icon={createClusterIcon(g.items.length)}
+              >
+                <Popup>
+                  <div>
+                    <strong>{g.items.length} deer sightings nearby</strong>
+                    <br />
+                    Last seen:{" "}
+                    {new Date(
+                      Math.max(
+                        ...g.items
+                          .map((s) => (s.createdAt ? new Date(s.createdAt).getTime() : 0))
+                      )
+                    ).toLocaleString()}
+                  </div>
+                </Popup>
+              </Marker>
+            )
+          )}
+
+
         <AddMarkerOnClick />
       </MapContainer>
     </div>
