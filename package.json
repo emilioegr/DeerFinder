@@ -1,5 +1,7 @@
 {
   "dependencies": {
-    "cors": "^2.8.5"
+    "@changey/react-leaflet-markercluster": "^4.0.0-rc1",
+    "cors": "^2.8.5",
+    "leaflet.markercluster": "^1.5.3"
   }
 }
