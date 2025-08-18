@@ -34,6 +34,31 @@ export default function App() {
       .catch(err => console.error("Failed to fetch sightings:", err));
   }, []);
 
+   // Helper: check if a date is today
+  const isToday = (dateString?: string) => {
+    if (!dateString) return false;
+    const d = new Date(dateString);
+    const today = new Date();
+    return (
+      d.getFullYear() === today.getFullYear() &&
+      d.getMonth() === today.getMonth() &&
+      d.getDate() === today.getDate()
+    );
+  };
+
+    // Fetch sightings from backend on load
+  useEffect(() => {
+    fetch("http://localhost:5050/api/sightings")
+      .then(res => res.json())
+      .then((data: Sighting[]) => {
+        // Only keep today's sightings
+        const todaysSightings = data.filter(s => isToday(s.createdAt));
+        setMarkers(todaysSightings);
+      })
+      .catch(err => console.error("Failed to fetch sightings:", err));
+  }, []);
+
+
   function AddMarkerOnClick() {
     useMapEvents({
       click(e) {
@@ -53,7 +78,12 @@ export default function App() {
           body: JSON.stringify(newSighting),
         })
           .then(res => res.json())
-          .then((saved: Sighting) => setMarkers(prev => [...prev, saved]))
+          .then((saved: Sighting) => {
+            // Only add if it’s today
+            if (isToday(saved.createdAt)) {
+              setMarkers(prev => [...prev, saved]);
+            }
+          })
           .catch(err => console.error("Failed to save sighting:", err));
       },
     });
@@ -80,7 +110,11 @@ export default function App() {
         body: JSON.stringify(newSighting),
       })
         .then(res => res.json())
-        .then((saved: Sighting) => setMarkers(prev => [...prev, saved]))
+        .then((saved: Sighting) => {
+          if (isToday(saved.createdAt)) {
+            setMarkers(prev => [...prev, saved]);
+          }
+        })
         .catch(err => console.error("Failed to save sighting:", err));
     });
   };
