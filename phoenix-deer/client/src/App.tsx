@@ -152,7 +152,7 @@ export default function App() {
     sightings.forEach((s) => {
       let found = false;
       for (const g of groups) {
-        if (getDistance(s.lat, s.lng, g.lat, g.lng) < 10) {
+        if (getDistance(s.lat, s.lng, g.lat, g.lng) < 100) {
           g.items.push(s);
           found = true;
           break;
