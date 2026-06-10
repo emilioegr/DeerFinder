@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
@@ -59,10 +59,18 @@ interface Sighting {
   createdAt?: string;
 }
 
+type DateFilter = "today" | "month" | "year" | "all";
+
+function formatDate(dateString?: string) {
+  if (!dateString) return "Unknown";
+  return new Date(dateString).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
 export default function App() {
   const [markers, setMarkers] = useState<Sighting[]>([]);
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
+  const [dateFilter, setDateFilter] = useState<DateFilter>("today");
 
   const fetchSightings = () => {
     fetch("http://localhost:5050/api/sightings")
@@ -163,7 +171,16 @@ export default function App() {
     return groups;
   }
 
-  const grouped = groupSightings(markers);
+  const filteredMarkers = markers.filter((s) => {
+    if (dateFilter === "all" || !s.createdAt) return true;
+    const d = new Date(s.createdAt);
+    const now = new Date();
+    if (dateFilter === "today") return d.toDateString() === now.toDateString();
+    if (dateFilter === "month") return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+    return d.getFullYear() === now.getFullYear();
+  });
+
+  const grouped = groupSightings(filteredMarkers);
 
   return (
     <div style={{ height: "100%", width: "100%" }}>
@@ -228,6 +245,42 @@ export default function App() {
         </div>
       )}
 
+      {/* 📅 Date filter */}
+      <div
+        style={{
+          position: "absolute",
+          top: 20,
+          right: 20,
+          zIndex: 1000,
+          backgroundColor: "rgba(255,255,255,0.95)",
+          borderRadius: "10px",
+          padding: "8px",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.2)",
+          display: "flex",
+          gap: "6px",
+        }}
+      >
+        {(["today", "month", "year", "all"] as DateFilter[]).map((f) => (
+          <button
+            key={f}
+            onClick={() => setDateFilter(f)}
+            style={{
+              padding: "6px 12px",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontWeight: 500,
+              fontSize: "13px",
+              backgroundColor: dateFilter === f ? "#646cff" : "#eee",
+              color: dateFilter === f ? "#fff" : "#333",
+              transition: "background 0.15s",
+            }}
+          >
+            {f === "today" ? "Today" : f === "month" ? "This Month" : f === "year" ? "This Year" : "All"}
+          </button>
+        ))}
+      </div>
+
       {/* Attribution */}
       <div
         style={{
@@ -267,14 +320,14 @@ export default function App() {
                 position={[g.lat, g.lng]}
                 icon={deerIcon}
               >
+                <Tooltip direction="top" offset={[0, -38]}>
+                  <span>Seen: {formatDate(g.items[0].createdAt)}</span>
+                </Tooltip>
                 <Popup>
                   <div>
                     <strong>{g.items[0].description}</strong>
                     <br />
-                    Last seen:{" "}
-                    {g.items[0].createdAt
-                      ? new Date(g.items[0].createdAt).toLocaleString()
-                      : "Unknown"}
+                    {formatDate(g.items[0].createdAt)}
                   </div>
                 </Popup>
               </Marker>
@@ -284,17 +337,22 @@ export default function App() {
                 position={[g.lat, g.lng]}
                 icon={createClusterIcon(g.items.length)}
               >
+                <Tooltip direction="top" offset={[0, -22]}>
+                  <div>
+                    <strong>{g.items.length} sightings nearby</strong>
+                    <br />
+                    {[...new Set(g.items.map((s) => formatDate(s.createdAt)))]
+                      .sort()
+                      .map((d) => <div key={d}>{d}</div>)}
+                  </div>
+                </Tooltip>
                 <Popup>
                   <div>
                     <strong>{g.items.length} deer sightings nearby</strong>
                     <br />
-                    Last seen:{" "}
-                    {new Date(
-                      Math.max(
-                        ...g.items
-                          .map((s) => (s.createdAt ? new Date(s.createdAt).getTime() : 0))
-                      )
-                    ).toLocaleString()}
+                    {[...new Set(g.items.map((s) => formatDate(s.createdAt)))]
+                      .sort()
+                      .map((d) => <div key={d}>{d}</div>)}
                   </div>
                 </Popup>
               </Marker>
