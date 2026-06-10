@@ -61,29 +61,34 @@ interface Sighting {
 
 export default function App() {
   const [markers, setMarkers] = useState<Sighting[]>([]);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
-  // ✅ Helper: check if a sighting is from today
-  const isToday = (dateString?: string) => {
-    if (!dateString) return false;
-    const d = new Date(dateString);
-    const today = new Date();
-    return (
-      d.getFullYear() === today.getFullYear() &&
-      d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate()
-    );
-  };
-
-  // ✅ Fetch sightings from backend
-  useEffect(() => {
+  const fetchSightings = () => {
     fetch("http://localhost:5050/api/sightings")
       .then((res) => res.json())
-      .then((data: Sighting[]) => {
-        const todays = data.filter((s) => isToday(s.createdAt));
-        setMarkers(todays);
-      })
+      .then((data: Sighting[]) => setMarkers(data))
       .catch((err) => console.error("Failed to fetch sightings:", err));
-  }, []);
+  };
+
+  useEffect(() => { fetchSightings(); }, []);
+
+  const handleImportGarmin = () => {
+    setImporting(true);
+    setImportStatus(null);
+    fetch("http://localhost:5050/api/import-garmin", { method: "POST" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setImportStatus(`Imported ${data.inserted} new, ${data.skipped} already existed (${data.total} total)`);
+          fetchSightings();
+        } else {
+          setImportStatus(`Error: ${data.error}`);
+        }
+      })
+      .catch(() => setImportStatus("Import failed"))
+      .finally(() => setImporting(false));
+  };
 
   // ✅ Add new marker on map click
   function AddMarkerOnClick() {
@@ -104,11 +109,7 @@ export default function App() {
           body: JSON.stringify(newSighting),
         })
           .then((res) => res.json())
-          .then((saved: Sighting) => {
-            if (isToday(saved.createdAt)) {
-              setMarkers((prev) => [...prev, saved]);
-            }
-          })
+          .then((saved: Sighting) => setMarkers((prev) => [...prev, saved]))
           .catch((err) => console.error("Failed to save sighting:", err));
       },
     });
@@ -136,11 +137,7 @@ export default function App() {
         body: JSON.stringify(newSighting),
       })
         .then((res) => res.json())
-        .then((saved: Sighting) => {
-          if (isToday(saved.createdAt)) {
-            setMarkers((prev) => [...prev, saved]);
-          }
-        })
+        .then((saved: Sighting) => setMarkers((prev) => [...prev, saved]))
         .catch((err) => console.error("Failed to save sighting:", err));
     });
   };
@@ -189,6 +186,47 @@ export default function App() {
       >
         Found a deer here!
       </button>
+
+      {/* 🗂 Import Garmin button */}
+      <button
+        onClick={handleImportGarmin}
+        disabled={importing}
+        style={{
+          position: "absolute",
+          bottom: 40,
+          left: 170,
+          zIndex: 1000,
+          padding: "10px 16px",
+          backgroundColor: importing ? "#aaa" : "#2e7d32",
+          color: "#fff",
+          border: "none",
+          borderRadius: "8px",
+          cursor: importing ? "not-allowed" : "pointer",
+          fontWeight: 500,
+        }}
+      >
+        {importing ? "Importing…" : "Import Garmin"}
+      </button>
+
+      {/* Import status message */}
+      {importStatus && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 90,
+            left: 20,
+            zIndex: 1000,
+            padding: "8px 14px",
+            backgroundColor: "rgba(0,0,0,0.75)",
+            color: "#fff",
+            borderRadius: "6px",
+            fontSize: "13px",
+            maxWidth: "320px",
+          }}
+        >
+          {importStatus}
+        </div>
+      )}
 
       {/* Attribution */}
       <div
