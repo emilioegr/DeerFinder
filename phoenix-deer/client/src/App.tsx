@@ -71,6 +71,7 @@ export default function App() {
   const [importStatus, setImportStatus] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [dateFilter, setDateFilter] = useState<DateFilter>("today");
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const fetchSightings = () => {
     fetch("/api/sightings")
@@ -79,7 +80,13 @@ export default function App() {
       .catch((err) => console.error("Failed to fetch sightings:", err));
   };
 
-  useEffect(() => { fetchSightings(); }, []);
+  useEffect(() => {
+    fetchSightings();
+    fetch("/api/admin/me")
+      .then((res) => res.json())
+      .then((data) => setIsAdmin(!!data.isAdmin))
+      .catch(() => setIsAdmin(false));
+  }, []);
 
   const handleImportGarmin = () => {
     setImporting(true);
@@ -204,26 +211,28 @@ export default function App() {
         Found a deer here!
       </button>
 
-      {/* 🗂 Import Garmin button */}
-      <button
-        onClick={handleImportGarmin}
-        disabled={importing}
-        style={{
-          position: "absolute",
-          bottom: 40,
-          left: 170,
-          zIndex: 1000,
-          padding: "10px 16px",
-          backgroundColor: importing ? "#aaa" : "#2e7d32",
-          color: "#fff",
-          border: "none",
-          borderRadius: "8px",
-          cursor: importing ? "not-allowed" : "pointer",
-          fontWeight: 500,
-        }}
-      >
-        {importing ? "Importing…" : "Import Garmin"}
-      </button>
+      {/* 🗂 Import Garmin button - admin only */}
+      {isAdmin && (
+        <button
+          onClick={handleImportGarmin}
+          disabled={importing}
+          style={{
+            position: "absolute",
+            bottom: 40,
+            left: 170,
+            zIndex: 1000,
+            padding: "10px 16px",
+            backgroundColor: importing ? "#aaa" : "#2e7d32",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            cursor: importing ? "not-allowed" : "pointer",
+            fontWeight: 500,
+          }}
+        >
+          {importing ? "Importing…" : "Import Garmin"}
+        </button>
+      )}
 
       {/* Import status message */}
       {importStatus && (

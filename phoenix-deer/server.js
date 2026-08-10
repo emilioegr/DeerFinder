@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import xml2js from 'xml2js';
 import fs from 'fs';
+import { sessionMiddleware, requireAdmin, adminRouter } from './auth.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -57,6 +58,7 @@ app.use(helmet());
 app.use(morgan('tiny'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
+app.use(sessionMiddleware);
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
@@ -288,6 +290,8 @@ async function parseGPXFile(filePath) {
 }
 
 // --- Routes
+app.use('/api/admin', adminRouter);
+
 app.get('/api/health', (_req, res) => res.json({ ok: true }));
 
 app.get('/api/sightings', async (_req, res) => {
@@ -330,7 +334,7 @@ app.post('/api/sightings', async (req, res) => {
 });
 
 // --- GPX Upload and Import Route
-app.post('/api/import-gpx', upload.single('gpxFile'), async (req, res) => {
+app.post('/api/import-gpx', requireAdmin, upload.single('gpxFile'), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: 'No GPX file uploaded' });
 
@@ -348,7 +352,7 @@ app.post('/api/import-gpx', upload.single('gpxFile'), async (req, res) => {
 });
 
 // --- Import from local Garmin folder
-app.post('/api/import-garmin', async (req, res) => {
+app.post('/api/import-garmin', requireAdmin, async (req, res) => {
   try {
     const garminDir = path.join(__dirname, '..', 'Garmin', 'GPX');
     const files = fs.readdirSync(garminDir).filter(f => f.toLowerCase().endsWith('.gpx'));
@@ -380,7 +384,7 @@ app.post('/api/import-garmin', async (req, res) => {
 });
 
 // --- Get import stats
-app.get('/api/import-stats', async (_req, res) => {
+app.get('/api/import-stats', requireAdmin, async (_req, res) => {
   try {
     const totalSightings = await Sighting.countDocuments();
     const todaySightings = await Sighting.countDocuments({
@@ -401,6 +405,21 @@ app.get('/api/import-stats', async (_req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to get stats' });
+  }
+});
+
+// --- SPA fallback: serve index.html for any non-API route (e.g. /admin),
+// so a direct navigation or page refresh there doesn't 404 against the
+// static file server. No-op in dev - Vite's dev server does this itself
+// (the frontend runs on :5173, and only /api/* is proxied here to :5050).
+// Only matters once client/ is actually built into public/, which isn't
+// wired up yet - degrade gracefully rather than throw ENOENT until then.
+app.get(/^(?!\/api).*/, (_req, res) => {
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  if (fs.existsSync(indexPath)) {
+    res.sendFile(indexPath);
+  } else {
+    res.status(404).send('Frontend build not found - run the client dev server on :5173 instead.');
   }
 });
 
