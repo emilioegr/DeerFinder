@@ -95,6 +95,16 @@ await Sighting.updateMany(
 // +/-0.0001-degree lat/lng box this replaces (worst-case corner ~13m).
 const DEDUP_RADIUS_METERS = 15;
 
+function distanceMeters(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = (x) => (x * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // --- Shared dedup+insert logic
 async function saveSightingsFromFile(filePath) {
   const sightings = await parseGPXFile(filePath);
@@ -104,6 +114,18 @@ async function saveSightingsFromFile(filePath) {
   const updatedSightings = [];
 
   for (const sighting of sightings) {
+    const sightingTime = new Date(sighting.createdAt).getTime();
+
+    // Check against sightings already queued from this same file before
+    // hitting the DB, so two near-duplicate waypoints in one GPX don't
+    // both get inserted (the DB-side $near check below only sees docs
+    // that were already committed on a *previous* import).
+    const batchMatch = newSightings.find(existing =>
+      existing.createdAt.getTime() === sightingTime &&
+      distanceMeters(existing.lat, existing.lng, sighting.lat, sighting.lng) < DEDUP_RADIUS_METERS
+    );
+    if (batchMatch) continue;
+
     const existingMatch = await Sighting.findOne({
       createdAt: sighting.createdAt,
       location: {
