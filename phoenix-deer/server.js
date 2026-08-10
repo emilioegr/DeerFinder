@@ -71,33 +71,59 @@ const sightingSchema = new mongoose.Schema({
   lat: Number,
   lng: Number,
   description: String,
-}, { 
+  location: {
+    type: { type: String, enum: ['Point'], default: 'Point' },
+    coordinates: { type: [Number] }, // [lng, lat]
+  },
+}, {
   timestamps: true
 });
 
+sightingSchema.index({ location: '2dsphere' });
+
 const Sighting = mongoose.model('Sighting', sightingSchema);
+
+// Backfill `location` on any pre-existing docs saved before the geo index
+// was added, so dedup queries below actually find them via $near.
+await Sighting.updateMany(
+  { location: { $exists: false }, lat: { $type: 'number' }, lng: { $type: 'number' } },
+  [{ $set: { location: { type: 'Point', coordinates: ['$lng', '$lat'] } } }]
+);
+
+// A duplicate is anything within DEDUP_RADIUS_METERS of a candidate point
+// with the exact same createdAt timestamp. 15m comfortably covers the old
+// +/-0.0001-degree lat/lng box this replaces (worst-case corner ~13m).
+const DEDUP_RADIUS_METERS = 15;
 
 // --- Shared dedup+insert logic
 async function saveSightingsFromFile(filePath) {
   const sightings = await parseGPXFile(filePath);
   if (sightings.length === 0) return { inserted: 0, updated: 0, skipped: 0, total: 0 };
 
-  const existingSightings = await Sighting.find({});
   const newSightings = [];
   const updatedSightings = [];
 
   for (const sighting of sightings) {
-    const sightingTime = new Date(sighting.createdAt).getTime();
-    const existingMatch = existingSightings.find(existing => {
-      return Math.abs(existing.lat - sighting.lat) < 0.0001 &&
-             Math.abs(existing.lng - sighting.lng) < 0.0001 &&
-             new Date(existing.createdAt).getTime() === sightingTime;
+    const existingMatch = await Sighting.findOne({
+      createdAt: sighting.createdAt,
+      location: {
+        $near: {
+          $geometry: { type: 'Point', coordinates: [sighting.lng, sighting.lat] },
+          $maxDistance: DEDUP_RADIUS_METERS,
+        },
+      },
     });
 
     if (existingMatch) {
       updatedSightings.push({ _id: existingMatch._id, updateData: { updatedAt: new Date() } });
     } else {
-      newSightings.push({ lat: sighting.lat, lng: sighting.lng, description: sighting.description, createdAt: sighting.createdAt });
+      newSightings.push({
+        lat: sighting.lat,
+        lng: sighting.lng,
+        description: sighting.description,
+        createdAt: sighting.createdAt,
+        location: { type: 'Point', coordinates: [sighting.lng, sighting.lat] },
+      });
     }
   }
 
@@ -250,7 +276,10 @@ app.post('/api/sightings', async (req, res) => {
     if (typeof lat !== 'number' || typeof lng !== 'number') {
       return res.status(400).json({ error: 'lat and lng are required numbers' });
     }
-    const doc = await Sighting.create({ lat, lng, description });
+    const doc = await Sighting.create({
+      lat, lng, description,
+      location: { type: 'Point', coordinates: [lng, lat] },
+    });
     res.status(201).json(doc);
   } catch (error) {
     res.status(500).json({ error: 'Failed to create sighting' });
