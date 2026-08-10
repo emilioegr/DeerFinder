@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import xml2js from 'xml2js';
 import fs from 'fs';
+import { downloadRecentWaypointGpx } from './garminClient.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -113,8 +114,8 @@ function distanceMeters(lat1, lng1, lat2, lng2) {
 }
 
 // --- Shared dedup+insert logic
-async function saveSightingsFromFile(filePath) {
-  const sightings = await parseGPXFile(filePath);
+async function saveSightingsFromFile(filePath, options) {
+  const sightings = await parseGPXFile(filePath, options);
   if (sightings.length === 0) return { inserted: 0, updated: 0, skipped: 0, total: 0 };
 
   const newSightings = [];
@@ -178,7 +179,12 @@ async function saveSightingsFromFile(filePath) {
 }
 
 // --- GPX Parsing Function
-async function parseGPXFile(filePath) {
+// waypointsOnly: skip the track/route fallback below and return [] if the
+// file has no explicit <wpt> markers. Used for Garmin Connect activity
+// downloads, which are continuous GPS tracks by default - without this,
+// an ordinary run/walk with no marked points would import as hundreds of
+// individual "sightings" (one per track point).
+async function parseGPXFile(filePath, { waypointsOnly = false } = {}) {
   try {
     const gpxData = fs.readFileSync(filePath, 'utf8');
     const parser = new xml2js.Parser();
@@ -234,7 +240,7 @@ async function parseGPXFile(filePath) {
     }
     
     // Parse track points if no waypoints found
-    if (waypoints.length === 0 && result.gpx && result.gpx.trk) {
+    if (waypoints.length === 0 && !waypointsOnly && result.gpx && result.gpx.trk) {
       result.gpx.trk.forEach(track => {
         if (track.trkseg) {
           track.trkseg.forEach(segment => {
@@ -260,7 +266,7 @@ async function parseGPXFile(filePath) {
     }
     
     // Parse route points if no waypoints or tracks found
-    if (waypoints.length === 0 && result.gpx && result.gpx.rte) {
+    if (waypoints.length === 0 && !waypointsOnly && result.gpx && result.gpx.rte) {
       result.gpx.rte.forEach(route => {
         if (route.rtept) {
           route.rtept.forEach(point => {
@@ -376,6 +382,47 @@ app.post('/api/import-garmin', async (req, res) => {
   } catch (error) {
     console.error('Garmin import error:', error);
     res.status(500).json({ error: 'Failed to import Garmin data', details: error.message });
+  }
+});
+
+// --- Import recent waypoint-bearing activities directly from Garmin Connect
+app.post('/api/import-garmin-connect', async (req, res) => {
+  if (!process.env.GARMIN_USERNAME || !process.env.GARMIN_PASSWORD) {
+    return res.status(400).json({
+      error: 'GARMIN_USERNAME and GARMIN_PASSWORD are not set in phoenix-deer/.env',
+    });
+  }
+
+  const tempDir = path.join(__dirname, 'uploads', `garmin-connect-${Date.now()}`);
+  fs.mkdirSync(tempDir, { recursive: true });
+
+  try {
+    const { files, activitiesFetched, activitiesWithWaypoints } = await downloadRecentWaypointGpx(tempDir);
+
+    let totalInserted = 0, totalUpdated = 0, totalSkipped = 0, totalPoints = 0;
+    for (const file of files) {
+      const result = await saveSightingsFromFile(file, { waypointsOnly: true });
+      totalInserted += result.inserted;
+      totalUpdated += result.updated;
+      totalSkipped += result.skipped;
+      totalPoints += result.total;
+    }
+
+    res.json({
+      success: true,
+      activitiesFetched,
+      activitiesWithWaypoints,
+      total: totalPoints,
+      inserted: totalInserted,
+      updated: totalUpdated,
+      skipped: totalSkipped,
+    });
+  } catch (error) {
+    console.error('Garmin Connect import error:', error);
+    const status = error.code === 'LOGIN_FAILED' ? 401 : 500;
+    res.status(status).json({ error: 'Failed to import from Garmin Connect', details: error.message });
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 });
 

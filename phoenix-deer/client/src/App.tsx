@@ -98,6 +98,26 @@ export default function App() {
       .finally(() => setImporting(false));
   };
 
+  const handleImportGarminConnect = () => {
+    setImporting(true);
+    setImportStatus(null);
+    fetch("/api/import-garmin-connect", { method: "POST" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success) {
+          setImportStatus(
+            `Synced ${data.inserted} new, ${data.skipped} already existed ` +
+            `(${data.activitiesWithWaypoints}/${data.activitiesFetched} recent activities had marked waypoints)`
+          );
+          fetchSightings();
+        } else {
+          setImportStatus(`Error: ${data.error}`);
+        }
+      })
+      .catch(() => setImportStatus("Garmin Connect sync failed"))
+      .finally(() => setImporting(false));
+  };
+
   // ✅ Add new marker on map click
   function AddMarkerOnClick() {
     useMapEvents({
@@ -223,6 +243,27 @@ export default function App() {
         }}
       >
         {importing ? "Importing…" : "Import Garmin"}
+      </button>
+
+      {/* 🔄 Sync Garmin Connect button */}
+      <button
+        onClick={handleImportGarminConnect}
+        disabled={importing}
+        style={{
+          position: "absolute",
+          bottom: 40,
+          left: 290,
+          zIndex: 1000,
+          padding: "10px 16px",
+          backgroundColor: importing ? "#aaa" : "#007cc3",
+          color: "#fff",
+          border: "none",
+          borderRadius: "8px",
+          cursor: importing ? "not-allowed" : "pointer",
+          fontWeight: 500,
+        }}
+      >
+        {importing ? "Syncing…" : "Sync Garmin Connect"}
       </button>
 
       {/* Import status message */}
