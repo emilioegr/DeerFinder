@@ -73,7 +73,7 @@ export default function App() {
   const [dateFilter, setDateFilter] = useState<DateFilter>("today");
 
   const fetchSightings = () => {
-    fetch("http://localhost:5050/api/sightings")
+    fetch("/api/sightings")
       .then((res) => res.json())
       .then((data: Sighting[]) => setMarkers(data))
       .catch((err) => console.error("Failed to fetch sightings:", err));
@@ -84,7 +84,7 @@ export default function App() {
   const handleImportGarmin = () => {
     setImporting(true);
     setImportStatus(null);
-    fetch("http://localhost:5050/api/import-garmin", { method: "POST" })
+    fetch("/api/import-garmin", { method: "POST" })
       .then((res) => res.json())
       .then((data) => {
         if (data.success) {
@@ -111,7 +111,7 @@ export default function App() {
           description: desc,
         };
 
-        fetch("http://localhost:5050/api/sightings", {
+        fetch("/api/sightings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(newSighting),
@@ -139,7 +139,7 @@ export default function App() {
         description: "You spotted a deer here!",
       };
 
-      fetch("http://localhost:5050/api/sightings", {
+      fetch("/api/sightings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newSighting),
