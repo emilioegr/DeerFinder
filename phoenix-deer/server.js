@@ -95,6 +95,13 @@ await Sighting.updateMany(
 // +/-0.0001-degree lat/lng box this replaces (worst-case corner ~13m).
 const DEDUP_RADIUS_METERS = 15;
 
+// Manual submissions (map click / "found a deer here") don't carry a
+// caller-set timestamp like GPX waypoints do, so exact-createdAt matching
+// can't catch accidental double-submits (double click, double tap, a
+// retried request). Treat anything at the same spot within this window
+// as the same submission instead.
+const MANUAL_DUPLICATE_WINDOW_MS = 10 * 1000;
+
 function distanceMeters(lat1, lng1, lat2, lng2) {
   const R = 6371000;
   const toRad = (x) => (x * Math.PI) / 180;
@@ -298,6 +305,20 @@ app.post('/api/sightings', async (req, res) => {
     if (typeof lat !== 'number' || typeof lng !== 'number') {
       return res.status(400).json({ error: 'lat and lng are required numbers' });
     }
+
+    const recentDuplicate = await Sighting.findOne({
+      createdAt: { $gte: new Date(Date.now() - MANUAL_DUPLICATE_WINDOW_MS) },
+      location: {
+        $near: {
+          $geometry: { type: 'Point', coordinates: [lng, lat] },
+          $maxDistance: DEDUP_RADIUS_METERS,
+        },
+      },
+    });
+    if (recentDuplicate) {
+      return res.status(200).json(recentDuplicate);
+    }
+
     const doc = await Sighting.create({
       lat, lng, description,
       location: { type: 'Point', coordinates: [lng, lat] },
