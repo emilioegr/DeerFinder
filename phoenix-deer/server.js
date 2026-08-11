@@ -361,6 +361,40 @@ app.post('/api/sightings', async (req, res) => {
   }
 });
 
+app.patch('/api/sightings/:id', requireAdmin, async (req, res) => {
+  try {
+    const { description } = req.body;
+    if (typeof description !== 'string' || !description.trim()) {
+      return res.status(400).json({ error: 'description is required' });
+    }
+    if (description.length > 300) {
+      return res.status(400).json({ error: 'description must be 300 characters or fewer' });
+    }
+
+    const doc = await Sighting.findByIdAndUpdate(
+      req.params.id,
+      { description: description.trim() },
+      { new: true }
+    );
+    if (!doc) return res.status(404).json({ error: 'Sighting not found' });
+    res.json(doc);
+  } catch (error) {
+    if (error.name === 'CastError') return res.status(404).json({ error: 'Sighting not found' });
+    res.status(500).json({ error: 'Failed to update sighting' });
+  }
+});
+
+app.delete('/api/sightings/:id', requireAdmin, async (req, res) => {
+  try {
+    const doc = await Sighting.findByIdAndDelete(req.params.id);
+    if (!doc) return res.status(404).json({ error: 'Sighting not found' });
+    res.json({ success: true });
+  } catch (error) {
+    if (error.name === 'CastError') return res.status(404).json({ error: 'Sighting not found' });
+    res.status(500).json({ error: 'Failed to delete sighting' });
+  }
+});
+
 // --- GPX Upload and Import Route
 app.post('/api/import-gpx', requireAdmin, upload.single('gpxFile'), async (req, res) => {
   try {

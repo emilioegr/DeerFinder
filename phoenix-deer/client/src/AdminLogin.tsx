@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import AdminDashboard from "./AdminDashboard";
 
 export default function AdminLogin() {
   const [checking, setChecking] = useState(true);
@@ -36,10 +37,6 @@ export default function AdminLogin() {
       .finally(() => setSubmitting(false));
   };
 
-  const handleLogout = () => {
-    fetch("/api/admin/logout", { method: "POST" }).then(() => setIsAdmin(false));
-  };
-
   const containerStyle: React.CSSProperties = {
     display: "flex",
     alignItems: "center",
@@ -54,27 +51,7 @@ export default function AdminLogin() {
   }
 
   if (isAdmin) {
-    return (
-      <div style={containerStyle}>
-        <div style={{ textAlign: "center" }}>
-          <p>You're logged in as admin.</p>
-          <button
-            onClick={handleLogout}
-            style={{
-              padding: "10px 16px",
-              backgroundColor: "#2e7d32",
-              color: "#fff",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            Log out
-          </button>
-        </div>
-      </div>
-    );
+    return <AdminDashboard onLogout={() => setIsAdmin(false)} />;
   }
 
   return (
