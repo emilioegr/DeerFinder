@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "nodemon server.js",
     "start": "node server.js",
-    "build": "npm install --prefix client --include=dev && npm run build --prefix client && rm -rf public && cp -r client/dist public"
+    "build": "npm install && npm install --prefix client --include=dev && npm run build --prefix client && rm -rf public && cp -r client/dist public"
   },
   "keywords": [],
   "author": "",
