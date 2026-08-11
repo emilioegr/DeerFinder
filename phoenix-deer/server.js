@@ -54,11 +54,39 @@ const upload = multer({
 app.use(cors());
 
 // --- Security & logging
-app.use(helmet());
+// helmet's default CSP only allows same-origin/data: images, which silently
+// blocks the map: OSM tiles, the deer marker icon, and the Leaflet marker
+// shadow are all loaded from external CDNs. Never surfaced before now since
+// in dev the page is served by Vite (not behind Express/helmet at all) -
+// only shows up once the app is actually served by this server, i.e. now.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+      'img-src': [
+        "'self'",
+        'data:',
+        'https://*.tile.openstreetmap.org',
+        'https://cdn-icons-png.flaticon.com',
+        'https://cdnjs.cloudflare.com',
+      ],
+    },
+  },
+}));
 app.use(morgan('tiny'));
 app.use(express.static(path.join(__dirname, 'public')));
 app.use(express.json());
 app.use(sessionMiddleware);
+
+// General throttle on the whole public API surface (POST /api/sightings in
+// particular has no other spam protection). Login has its own tighter limit
+// in auth.js on top of this one.
+app.use('/api/', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+}));
 
 app.use((req, res, next) => {
   console.log(`${req.method} ${req.url}`);
