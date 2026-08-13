@@ -28,7 +28,7 @@ export default function AdminLogin() {
       .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
       .then(({ ok, data }) => {
         if (ok) {
-          window.location.href = "/";
+          setIsAdmin(true);
         } else {
           setError(data.error || "Login failed");
         }
