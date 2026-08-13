@@ -18,6 +18,13 @@ const __dirname = path.dirname(__filename);
 dotenv.config();
 
 const app = express();
+// Render (like most PaaS) puts the app behind a reverse proxy, so requests
+// arrive over plain HTTP internally with X-Forwarded-* headers describing
+// the original HTTPS connection. Without this, Express can't correctly
+// resolve req.ip/req.protocol - express-rate-limit throws on every request
+// as a result, and it's the kind of gap that causes hard-to-trace cookie
+// and session inconsistencies behind a proxy.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5050;
 const MONGODB_URI = process.env.MONGODB_URI;
 
