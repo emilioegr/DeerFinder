@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMapEvents } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -13,6 +13,21 @@ const deerIcon = new L.Icon({
     "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png",
   shadowSize: [41, 41],
   shadowAnchor: [14, 41],
+});
+
+// 🔵 "You are here" icon
+const youAreHereIcon = new L.DivIcon({
+  html: `<div style="
+    width:18px;
+    height:18px;
+    border-radius:50%;
+    background:#4285f4;
+    border:3px solid white;
+    box-shadow:0 0 0 2px rgba(66,133,244,0.5), 0 1px 4px rgba(0,0,0,0.4);
+  "></div>`,
+  className: "",
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
 });
 
 // 🔢 Cluster icon (number of sightings)
@@ -69,6 +84,8 @@ function formatDate(dateString?: string) {
 export default function App() {
   const [markers, setMarkers] = useState<Sighting[]>([]);
   const [dateFilter, setDateFilter] = useState<DateFilter>("today");
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const mapRef = useRef<L.Map | null>(null);
 
   const fetchSightings = () => {
     fetch("/api/sightings")
@@ -131,6 +148,22 @@ export default function App() {
     });
   };
 
+  // 📍 Center the map on the user's current location
+  const handleShowMyLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported by your browser");
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords;
+        setUserLocation({ lat: latitude, lng: longitude });
+        mapRef.current?.flyTo([latitude, longitude], 17);
+      },
+      () => alert("Unable to retrieve your location")
+    );
+  };
+
   // ✅ Group sightings within 10 meters
   function groupSightings(sightings: Sighting[]) {
     const groups: { lat: number; lng: number; items: Sighting[] }[] = [];
@@ -183,6 +216,33 @@ export default function App() {
         }}
       >
         Found a deer here!
+      </button>
+
+      {/* 📍 My location button */}
+      <button
+        onClick={handleShowMyLocation}
+        title="Show my location"
+        style={{
+          position: "absolute",
+          bottom: 40,
+          right: 20,
+          zIndex: 1000,
+          width: "44px",
+          height: "44px",
+          padding: 0,
+          backgroundColor: "#fff",
+          color: "#333",
+          border: "none",
+          borderRadius: "50%",
+          cursor: "pointer",
+          fontSize: "20px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+        }}
+      >
+        📍
       </button>
 
       {/* 📅 Date filter */}
@@ -246,11 +306,17 @@ export default function App() {
       </div>
 
       {/* 🗺 Map */}
-      <MapContainer center={[53.356, -6.329]} zoom={15} style={{ height: "100%", width: "100%" }}>
+      <MapContainer ref={mapRef} center={[53.356, -6.329]} zoom={15} style={{ height: "100%", width: "100%" }}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution="&copy; OpenStreetMap contributors"
         />
+
+        {userLocation && (
+          <Marker position={[userLocation.lat, userLocation.lng]} icon={youAreHereIcon}>
+            <Tooltip direction="top" offset={[0, -9]}>You are here</Tooltip>
+          </Marker>
+        )}
 
         {/* Render groups */}
           {grouped.map((g, idx) =>
